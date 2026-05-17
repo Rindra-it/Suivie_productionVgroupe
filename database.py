@@ -291,7 +291,7 @@ def setup_database():
             )
         """)
         conn.commit()
-        print("Base de données vérifiée et prête.")
+        print("Connexion à la base de données")
     except Exception as e:
         print(f"Erreur lors du setup de la DB : {e}")
     finally:
