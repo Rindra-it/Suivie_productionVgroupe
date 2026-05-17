@@ -330,12 +330,12 @@ def delete_style(code_style):
     if not conn: return False
     try:
         cursor = conn.cursor()
-        # BUG CORRIGÉ : %s au lieu de ? (syntaxe PostgreSQL)
         cursor.execute("DELETE FROM styles WHERE code_style = %s", (code_style,))
         conn.commit()
+        print(f"Lignes supprimées : {cursor.rowcount}")  # ← ajoutez ça
         return True
     except Exception as e:
-        print(f"Erreur SQL delete_style : {e}")
+        print(f"Erreur SQL delete_style : {e}")  # ← et ça
         return False
     finally:
         conn.close()

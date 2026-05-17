@@ -22,13 +22,11 @@ class MainWindow(QMainWindow):
         self.resize(1280, 850)
         self.setStyleSheet(DARK_THEME)
 
-        
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         main_layout = QHBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
-
 
         self.sidebar = QFrame()
         self.sidebar.setObjectName("Sidebar")
@@ -44,13 +42,11 @@ class MainWindow(QMainWindow):
         sub_logo.setStyleSheet("color: #444; font-size: 9px; font-weight: bold; margin-bottom: 30px;")
         sidebar_layout.addWidget(sub_logo)
 
-        
         def add_section_label(text):
             lbl = QLabel(text)
             lbl.setStyleSheet("color: #444; font-weight: bold; margin-top: 15px; margin-left: 5px; font-size: 10px;")
             sidebar_layout.addWidget(lbl)
 
-        
         add_section_label("PRINCIPAL")
         self.btn_dash = self.create_nav_button("  Dashboard")
         self.btn_saisie = self.create_nav_button("  Saisie")
@@ -76,7 +72,6 @@ class MainWindow(QMainWindow):
 
         sidebar_layout.addStretch()
 
-    
         self.user_info = QFrame()
         self.user_info.setStyleSheet("background-color: #141d14; border-radius: 12px; padding: 10px; border: none; margin-right: 10px;")
         user_layout = QHBoxLayout(self.user_info)
@@ -85,17 +80,14 @@ class MainWindow(QMainWindow):
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
         avatar.setStyleSheet("background-color: #96bf48; color: #0b0f0a; border-radius: 17px; font-weight: bold;")
 
-    
         self.content_area = QStackedWidget()
         
-    
         self.dash_page = DashboardView()
         self.input_page = InputView()
         self.recap_page = RecapView()
         self.worker_page = WorkerView() 
         self.style_page = StyleManagementView()
 
-       
         self.content_area.addWidget(self.dash_page)
         self.content_area.addWidget(self.input_page)
         self.content_area.addWidget(self.recap_page)
@@ -105,26 +97,22 @@ class MainWindow(QMainWindow):
         main_layout.addWidget(self.sidebar, 1)
         main_layout.addWidget(self.content_area, 5)
 
-    
         self.btn_dash.clicked.connect(self.show_dashboard)
         self.btn_saisie.clicked.connect(self.show_saisie)
         self.btn_recap.clicked.connect(self.show_recap)
         self.btn_emp.clicked.connect(self.show_worker_page) 
         self.btn_styles.clicked.connect(self.show_style_page)
         
-        
         self.style_page.btn_add_style.clicked.connect(self.handle_add_style)
         self.input_page.btn_valid.clicked.connect(self.handle_save_production)
         self.worker_page.btn_open_add.clicked.connect(self.open_add_worker_dialog)
         self.worker_page.search_input.textChanged.connect(self.handle_search_worker)
-        
         
         self.recap_page.btn_all.clicked.connect(lambda: self.refresh_recap("all"))
         self.recap_page.btn_day.clicked.connect(lambda: self.refresh_recap("day"))
         self.recap_page.btn_week.clicked.connect(lambda: self.refresh_recap("week"))
         self.recap_page.btn_month.clicked.connect(lambda: self.refresh_recap("month"))
 
-    
         self.refresh_ui_data()
         self.show_dashboard()
 
@@ -136,10 +124,8 @@ class MainWindow(QMainWindow):
         btn.setCheckable(True) 
         return btn
 
-   
     def set_active_menu(self, active_btn):
         for btn in self.menu_buttons:
-            
             btn.setChecked(btn == active_btn)
             btn.setProperty("active", "true" if btn == active_btn else "false")
             btn.style().unpolish(btn)
@@ -171,7 +157,8 @@ class MainWindow(QMainWindow):
         self.content_area.setCurrentWidget(self.style_page)
         self.refresh_styles_list()
 
-  
+    # ── Styles ──────────────────────────────────────────────────────────────
+
     def handle_add_style(self):
         code = self.style_page.input_new_style.text().strip()
         if code:
@@ -180,10 +167,34 @@ class MainWindow(QMainWindow):
                 self.refresh_styles_list()
 
     def refresh_styles_list(self):
+        """Unique définition — recharge et passe les deux callbacks."""
         data = get_all_styles()
-        self.style_page.update_table(data)
+        self.style_page.update_table(data, self.handle_edit_style, self.handle_delete_style)
+        self.style_page.table_styles.viewport().update()
 
-   
+    def handle_delete_style(self, style_code):
+        confirm = QMessageBox.question(
+            self, "Supprimer", f"Supprimer le style « {style_code} » ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        if confirm == QMessageBox.StandardButton.Yes:
+            if delete_style(style_code):
+                self.refresh_styles_list()
+            else:
+                QMessageBox.warning(self, "Erreur", f"Impossible de supprimer {style_code}.")
+
+    def handle_edit_style(self, old_code):
+        new_code, ok = QInputDialog.getText(
+            self, "Modifier le style", "Nouveau code :", text=old_code
+        )
+        if ok and new_code.strip():
+            if update_style_code(old_code, new_code.strip().upper()):
+                self.refresh_styles_list()
+            else:
+                QMessageBox.warning(self, "Erreur", f"Impossible de modifier {old_code}.")
+
+    # ── Employés ─────────────────────────────────────────────────────────────
+
     def open_add_worker_dialog(self):
         dialog = AddWorkerDialog(self)
         if dialog.exec(): 
@@ -198,8 +209,13 @@ class MainWindow(QMainWindow):
         query = self.worker_page.search_input.text().lower()
         table = self.worker_page.table_workers
         for row in range(table.rowCount()):
-            match = any(query in (table.item(row, col).text().lower() if table.item(row, col) else "") for col in range(3))
+            match = any(
+                query in (table.item(row, col).text().lower() if table.item(row, col) else "")
+                for col in range(3)
+            )
             table.setRowHidden(row, not match)
+
+    # ── Production ───────────────────────────────────────────────────────────
 
     def handle_save_production(self):
         date_p = self.input_page.date.date().toPyDate()
@@ -210,14 +226,15 @@ class MainWindow(QMainWindow):
         qy = self.input_page.qty.value()
         tk = self.input_page.ticket.text().strip()
 
-        if not mat or not sty or qy <= 0: return
+        if not mat or not sty or qy <= 0:
+            return
 
         if save_production(date_p, mat, sty, et, ca, qy, tk):
             self.input_page.qty.setValue(0)
             self.input_page.ticket.clear()
             self.refresh_ui_data()
         else:
-            print("Erreur Production")
+            QMessageBox.warning(self, "Erreur", "Impossible d'enregistrer la production.")
 
     def refresh_ui_data(self):
         mats = get_recent_suggestions("matricule")
@@ -228,6 +245,8 @@ class MainWindow(QMainWindow):
         if self.input_page.cat.count() == 0:
             self.input_page.cat.addItems(["Manche", "Colar", "Other"])
 
+    # ── Récapitulatif ────────────────────────────────────────────────────────
+
     def refresh_recap(self, filter_type):
         style_data = get_aggregated_production(filter_type)
         worker_data = get_worker_stats(filter_type)
@@ -235,34 +254,14 @@ class MainWindow(QMainWindow):
         
         while self.recap_page.worker_list_area.count():
             child = self.recap_page.worker_list_area.takeAt(0)
-            if child.widget(): child.widget().deleteLater()
+            if child.widget():
+                child.widget().deleteLater()
+
         for row in worker_data:
             if len(row) >= 2:
-                self.recap_page.add_worker_card(row[0], row[1], row[2] if len(row)>2 else 0)
+                self.recap_page.add_worker_card(row[0], row[1], row[2] if len(row) > 2 else 0)
 
 
-        
-
-    def refresh_styles_list(self):
-        data = get_all_styles()
-        self.style_page.update_table(data, self.handle_edit_style, self.handle_delete_style)
-
-    def handle_delete_style(self, style_code):
-        
-       
-        confirm = QMessageBox.question(self, "Supprimer", f"Supprimer {style_code} ?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        if confirm == QMessageBox.StandardButton.Yes:
-            if delete_style(style_code):
-                self.refresh_styles_list()
-
-    def handle_edit_style(self, old_code):
-        new_code, ok = QInputDialog.getText(self, "Modifier", "Nouveau code:", text=old_code)
-        if ok and new_code.strip():
-            if update_style_code(old_code, new_code.strip().upper()):
-                self.refresh_styles_list()
-
-                
-                
 if __name__ == "__main__":
     setup_database()
     app = QApplication(sys.argv)
@@ -272,4 +271,4 @@ if __name__ == "__main__":
         sys.exit(app.exec())
     except Exception as e:
         import traceback
-        traceback.print_exc()  # <-- remplacez print(f"Erreur : {e}") par ça
+        traceback.print_exc()
