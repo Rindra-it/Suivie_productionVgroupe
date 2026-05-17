@@ -16,14 +16,18 @@ def connect_db():
         return None
 
 def get_all_workers():
+    """Récupère la liste propre pour le tableau (3 colonnes)"""
     conn = connect_db()
-    if conn:
+    if not conn: return []
+    try:
         cursor = conn.cursor()
-        cursor.execute("SELECT matricule, nom_complet FROM ouvriers;")
-        workers = cursor.fetchall()
+        cursor.execute("SELECT matricule, nom, prenom FROM ouvriers ORDER BY matricule ASC")
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur SQL get_all_workers : {e}")
+        return []
+    finally:
         conn.close()
-        return workers
-    return []
     
 def get_workers_list():
     conn = connect_db()
@@ -50,7 +54,6 @@ def get_recent_suggestions(column_name):
     conn = connect_db()
     if conn:
         cursor = conn.cursor()
-    
         query = f"SELECT DISTINCT {column_name} FROM productions ORDER BY id DESC LIMIT 5;"
         try:
             cursor.execute(query)
@@ -67,7 +70,6 @@ def save_production(date_prod, mat, sty, et, ca, qy, tk):
     if not conn: return False
     cursor = conn.cursor()
     
-    
     q_manche = qy if ca == "Manche" else 0
     q_collar = qy if ca == "Col" else 0
     q_other = qy if ca not in ["Manche", "Col"] else 0
@@ -77,7 +79,6 @@ def save_production(date_prod, mat, sty, et, ca, qy, tk):
             INSERT INTO productions (date_prod, matricule, code_style, etat, qty_manche, qty_collar, qty_other)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (date_prod, mat, sty, et, q_manche, q_collar, q_other))
-        
         conn.commit()
         return True
     except Exception as e:
@@ -106,7 +107,6 @@ def get_aggregated_production(filter_type="all"):
     conn = connect_db()
     if not conn: return []
     
-    
     date_filter = ""
     if filter_type == "day":
         date_filter = "WHERE date_prod = CURRENT_DATE"
@@ -131,18 +131,16 @@ def get_aggregated_production(filter_type="all"):
         cursor = conn.cursor()
         cursor.execute(query)
         rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
         return rows
     except Exception as e:
         print(f"Erreur SQL agrégation : {e}")
         return []
+    finally:
+        conn.close()
     
-
 def get_worker_stats(filter_type="all"):
     conn = connect_db()
     if not conn: return []
-    
     
     date_filter = ""
     if filter_type == "day":
@@ -166,16 +164,16 @@ def get_worker_stats(filter_type="all"):
         cursor = conn.cursor()
         cursor.execute(query)
         rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
         return rows
     except Exception as e:
         print(f"Erreur SQL stats : {e}")
         return []
+    finally:
+        conn.close()
 
 
 def save_worker(matricule, nom, prenom):
-    """Enregistre ou met à jour un ouvrier (sans atelier)"""
+    """Enregistre ou met à jour un ouvrier"""
     conn = connect_db()
     if not conn: return False
     try:
@@ -194,50 +192,53 @@ def save_worker(matricule, nom, prenom):
     finally:
         conn.close()
 
-def get_all_workers():
-    """Récupère la liste propre pour le tableau (3 colonnes)"""
-    conn = connect_db()
-    if not conn: return []
-    try:
-        cursor = conn.cursor()
-        cursor.execute("SELECT matricule, nom, prenom FROM ouvriers ORDER BY matricule ASC")
-        return cursor.fetchall()
-    except Exception as e:
-        print(f"Erreur SQL get_all_workers : {e}")
-        return []
-    finally:
-        conn.close()
-
 def get_dashboard_data():
     conn = connect_db()
     if not conn: return None
     try:
         cursor = conn.cursor()
         
-        cursor.execute("SELECT (productions.qty_manche + productions.qty_collar + productions.qty_other) FROM productions WHERE date_prod = CURRENT_DATE")
-        total = cursor.fetchone()[0] or 0
-        cursor.execute("SELECT COUNT(DISTINCT matricule) FROM productions WHERE date_prod = CURRENT_DATE")
-        effectif = cursor.fetchone()[0] or 0
-        
+        # BUG CORRIGÉ : SUM() pour avoir une seule valeur agrégée
+        cursor.execute("""
+            SELECT COALESCE(SUM(qty_manche + qty_collar + qty_other), 0)
+            FROM productions 
+            WHERE date_prod = CURRENT_DATE
+        """)
+        row = cursor.fetchone()
+        total = row[0] if row else 0
+
+        cursor.execute("""
+            SELECT COUNT(DISTINCT matricule) 
+            FROM productions 
+            WHERE date_prod = CURRENT_DATE
+        """)
+        row = cursor.fetchone()
+        effectif = row[0] if row else 0
         
         cursor.execute("""
-            SELECT matricule, SUM(productions.qty_manche + productions.qty_collar + productions.qty_other) as total FROM productions
+            SELECT matricule, SUM(qty_manche + qty_collar + qty_other) as total 
+            FROM productions
             WHERE date_prod = CURRENT_DATE 
-            GROUP BY matricule ORDER BY total DESC LIMIT 5
+            GROUP BY matricule 
+            ORDER BY total DESC 
+            LIMIT 5
         """)
         top_5 = cursor.fetchall()
 
-    
         cursor.execute("""
-            SELECT matricule, code_style, (productions.qty_manche + productions.qty_collar + productions.qty_other), etat FROM productions
-            ORDER BY id DESC LIMIT 10
+            SELECT matricule, code_style, (qty_manche + qty_collar + qty_other), etat 
+            FROM productions
+            ORDER BY id DESC 
+            LIMIT 10
         """)
         recent_entries = cursor.fetchall()
 
-    
         cursor.execute("""
-            SELECT date_prod, SUM(productions.qty_manche + productions.qty_collar + productions.qty_other) FROM productions 
-            GROUP BY date_prod ORDER BY date_prod DESC LIMIT 7
+            SELECT date_prod, SUM(qty_manche + qty_collar + qty_other) 
+            FROM productions 
+            GROUP BY date_prod 
+            ORDER BY date_prod DESC 
+            LIMIT 7
         """)
         graph_data = cursor.fetchall()
 
@@ -248,19 +249,11 @@ def get_dashboard_data():
             "recent": recent_entries,
             "graph": graph_data
         }
+    except Exception as e:
+        print(f"Erreur SQL dashboard : {e}")
+        return {"total": 0, "effectif": 0, "top_5": [], "recent": [], "graph": []}
     finally:
         conn.close()
-
-
-
-
-
-
-
-
-
-
-
 
 
 def setup_database():
@@ -278,18 +271,26 @@ def setup_database():
             )
         """)
         
+        # BUG CORRIGÉ : nom de table 'productions' (cohérent avec tout le code)
         cursor.execute("""
-            CREATE TABLE IF NOT EXISTS production (
+            CREATE TABLE IF NOT EXISTS productions (
                 id SERIAL PRIMARY KEY,
-                date_production DATE DEFAULT CURRENT_DATE,
+                date_prod DATE DEFAULT CURRENT_DATE,
                 matricule VARCHAR(50) REFERENCES ouvriers(matricule),
                 code_style VARCHAR(100),
                 etat VARCHAR(50),
-                categorie VARCHAR(100),
-                quantite INTEGER,
-                ticket VARCHAR(100)
+                qty_manche INTEGER DEFAULT 0,
+                qty_collar INTEGER DEFAULT 0,
+                qty_other INTEGER DEFAULT 0
             )
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS styles (
+                code_style VARCHAR(100) PRIMARY KEY
+            )
+        """)
+
         conn.commit()
         print("Connexion à la base de données")
     except Exception as e:
@@ -299,45 +300,57 @@ def setup_database():
 
 def get_all_styles():
     conn = connect_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT code_style FROM styles ORDER BY code_style ASC")
-    res = cursor.fetchall()
-    conn.close()
-    return res
+    if not conn: return []
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT code_style FROM styles ORDER BY code_style ASC")
+        return cursor.fetchall()
+    except Exception as e:
+        print(f"Erreur SQL get_all_styles : {e}")
+        return []
+    finally:
+        conn.close()
 
 def add_style_to_repo(code):
     conn = connect_db()
+    if not conn: return False
     try:
         cursor = conn.cursor()
         cursor.execute("INSERT INTO styles (code_style) VALUES (%s) ON CONFLICT DO NOTHING", (code.upper(),))
         conn.commit()
         return True
-    except: return False
-    finally: conn.close()
-
+    except Exception as e:
+        print(f"Erreur SQL add_style : {e}")
+        return False
+    finally:
+        conn.close()
 
 def delete_style(code_style):
     conn = connect_db()
-    
+    if not conn: return False
     try:
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM styles WHERE code_style = ?", (code_style))
+        # BUG CORRIGÉ : %s au lieu de ? (syntaxe PostgreSQL)
+        cursor.execute("DELETE FROM styles WHERE code_style = %s", (code_style,))
         conn.commit()
         return True
-    except:
+    except Exception as e:
+        print(f"Erreur SQL delete_style : {e}")
         return False
     finally:
         conn.close()
 
 def update_style_code(old_code, new_code):
     conn = connect_db()
-    
+    if not conn: return False
     try:
         cursor = conn.cursor()
-        cursor.execute("UPDATE styles SET code_style = ? WHERE code_style = ?", (new_code, old_code))
+        # BUG CORRIGÉ : %s au lieu de ? (syntaxe PostgreSQL)
+        cursor.execute("UPDATE styles SET code_style = %s WHERE code_style = %s", (new_code, old_code))
         conn.commit()
         return True
-    except:
+    except Exception as e:
+        print(f"Erreur SQL update_style : {e}")
         return False
     finally:
         conn.close()

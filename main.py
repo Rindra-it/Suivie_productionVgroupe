@@ -262,12 +262,14 @@ class MainWindow(QMainWindow):
                 self.refresh_styles_list()
 
                 
+                
 if __name__ == "__main__":
-    setup_database() 
+    setup_database()
     app = QApplication(sys.argv)
     try:
         window = MainWindow()
         window.show()
         sys.exit(app.exec())
     except Exception as e:
-        print(f"Erreur : {e}")
+        import traceback
+        traceback.print_exc()  # <-- remplacez print(f"Erreur : {e}") par ça
